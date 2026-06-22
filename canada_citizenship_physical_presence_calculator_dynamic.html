@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Canada Citizenship Physical Presence Calculator</title>
+<style>
+  :root { --border:#1f4e79; --muted:#f1f3f5; --text:#111; --ok:#e7f7ec; --warn:#fff4d6; --bad:#ffe8e8; }
+  body { font-family: Arial, sans-serif; color:var(--text); margin:20px; max-width:1100px; }
+  h1 { font-size:24px; margin-bottom:6px; }
+  .note { background:#f7f7f7; border-left:4px solid #777; padding:12px; margin:14px 0; line-height:1.45; }
+  .controls, .section { border:1px solid #ccc; padding:14px; margin:14px 0; border-radius:8px; }
+  label { display:block; font-weight:bold; margin:8px 0 4px; }
+  input { padding:7px; border:1px solid #aaa; border-radius:4px; min-width:155px; }
+  input[type="number"] { width:155px; }
+  button { padding:7px 10px; border:1px solid #777; border-radius:5px; cursor:pointer; background:white; }
+  button:hover { background:#f2f2f2; }
+  table { border-collapse:collapse; width:100%; margin-top:12px; }
+  th, td { border:1px solid var(--border); padding:10px; text-align:left; }
+  th { background:var(--muted); }
+  .summary td:nth-child(2), .summary td:nth-child(4), .summary td:nth-child(5) { font-weight:500; }
+  .big { font-size:20px; font-weight:bold; }
+  .status { padding:14px; border-radius:8px; margin:14px 0; font-size:18px; }
+  .ok { background:var(--ok); }
+  .warn { background:var(--warn); }
+  .bad { background:var(--bad); }
+  .row { display:flex; flex-wrap:wrap; gap:16px; align-items:end; }
+  .small { font-size:13px; color:#444; }
+  .delete { color:#900; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:800px){ .grid2 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Canada Citizenship Physical Presence Calculator</h1>
+<div class="note">
+  This is a personal planning calculator, not an official IRCC result. Before applying, redo your calculation in the official IRCC physical presence calculator and follow the latest IRCC instructions.
+</div>
+
+<div class="controls">
+  <div class="row">
+    <div>
+      <label for="prDate">Permanent residence date</label>
+      <input id="prDate" type="date" value="2025-12-18">
+    </div>
+    <div>
+      <label for="appDate">Application date</label>
+      <input id="appDate" type="date" value="2026-06-22">
+    </div>
+    <div>
+      <label>Eligibility period</label>
+      <div id="eligibilityPeriod" class="small" style="font-size:15px; padding:8px 0;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="section">
+    <h2>Absences after becoming PR</h2>
+    <p class="small">Enter trips outside Canada. The day you leave and the day you return are counted as days in Canada, so only the full days between are treated as absent.</p>
+    <table id="prAbsences"><thead><tr><th>Left Canada</th><th>Returned Canada</th><th>Absent days</th><th></th></tr></thead><tbody></tbody></table>
+    <button onclick="addRow('prAbsences')">+ Add PR absence</button>
+  </div>
+
+  <div class="section">
+    <h2>Absences before PR / while TR or protected person</h2>
+    <p class="small">Use this only if you were outside Canada during your temporary resident / protected person period within the five-year eligibility window.</p>
+    <table id="trAbsences"><thead><tr><th>Left Canada</th><th>Returned Canada</th><th>Absent days</th><th></th></tr></thead><tbody></tbody></table>
+    <button onclick="addRow('trAbsences')">+ Add pre-PR absence</button>
+  </div>
+</div>
+
+<div id="status" class="status"></div>
+
+<table class="summary">
+  <tr>
+    <th colspan="2">Physical Presence as a Permanent Resident</th>
+    <th colspan="3">Physical Presence as a Temporary Resident or Protected Person</th>
+  </tr>
+  <tr>
+    <th>Item</th><th>Days</th><th>Item</th><th>Calendar Days</th><th>Credit</th>
+  </tr>
+  <tr>
+    <td>Days within eligibility period</td><td id="prWithin">0</td>
+    <td>Days within eligibility period</td><td id="trWithin">0</td><td id="trHalf">0</td>
+  </tr>
+  <tr>
+    <td>Days absent</td><td id="prAbsent">0</td>
+    <td>Days absent</td><td id="trAbsent">0</td><td id="trAbsentCredit">0</td>
+  </tr>
+  <tr>
+    <td>Total credit</td><td id="prCredit">0</td>
+    <td>Total credit*</td><td id="trCalendarCredit">0</td><td id="trCredit">0</td>
+  </tr>
+  <tr>
+    <td colspan="3" class="big">Total Physical Presence</td><td colspan="2" id="total" class="big">0</td>
+  </tr>
+</table>
+
+<div class="note">
+  *Pre-PR time as a temporary resident or protected person counts as 0.5 day per calendar day, with a maximum credit of 365 days. The temporary resident calendar days are calculated dynamically from the five-year eligibility period up to the day before your PR date. You need 1,095 days of physical presence in the five years immediately before your application date. IRCC also says you cannot meet the requirement without at least two years as a permanent resident.
+</div>
+
+<script>
+function parseDate(idOrValue) {
+  const v = idOrValue.includes && idOrValue.includes('-') ? idOrValue : document.getElementById(idOrValue).value;
+  if (!v) return null;
+  const [y,m,d] = v.split('-').map(Number);
+  return new Date(Date.UTC(y,m-1,d));
+}
+function fmt(n){ return Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined,{maximumFractionDigits:1}); }
+function dateText(d) {
+  if (!d) return '';
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth()+1).padStart(2,'0');
+  const day = String(d.getUTCDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function diffDays(start, end) {
+  if (!start || !end) return 0;
+  return Math.max(0, Math.round((end - start) / 86400000));
+}
+function addYears(date, years) {
+  const d = new Date(date);
+  d.setUTCFullYear(d.getUTCFullYear() + years);
+  return d;
+}
+function overlapDays(start, end, winStart, winEnd) {
+  if (!start || !end) return 0;
+  const s = new Date(Math.max(start, winStart));
+  const e = new Date(Math.min(end, winEnd));
+  return diffDays(s, e);
+}
+function tripAbsentDays(left, returned, winStart, winEnd) {
+  // The departure and return dates count as present; absent period is [left+1, returned)
+  if (!left || !returned || returned <= left) return 0;
+  const absentStart = new Date(left); absentStart.setUTCDate(absentStart.getUTCDate()+1);
+  return overlapDays(absentStart, returned, winStart, winEnd);
+}
+function addRow(tableId, presetA='', presetB='') {
+  const tbody = document.querySelector(`#${tableId} tbody`);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td><input type="date" value="${presetA}"></td>
+                  <td><input type="date" value="${presetB}"></td>
+                  <td class="days">0</td>
+                  <td><button class="delete" onclick="this.closest('tr').remove(); calculate();">Remove</button></td>`;
+  tbody.appendChild(tr);
+  tr.querySelectorAll('input').forEach(i => i.addEventListener('input', calculate));
+  calculate();
+}
+function sumTable(tableId, winStart, winEnd) {
+  let total = 0;
+  document.querySelectorAll(`#${tableId} tbody tr`).forEach(tr => {
+    const inputs = tr.querySelectorAll('input');
+    const a = parseDate(inputs[0].value);
+    const b = parseDate(inputs[1].value);
+    const days = tripAbsentDays(a,b,winStart,winEnd);
+    tr.querySelector('.days').textContent = fmt(days);
+    total += days;
+  });
+  return total;
+}
+function calculate() {
+  const prDate = parseDate('prDate');
+  const appDate = parseDate('appDate');
+  const status = document.getElementById('status');
+  if (!prDate || !appDate || appDate <= prDate) {
+    status.className = 'status bad';
+    status.textContent = 'Enter a valid PR date and an application date after the PR date.';
+    return;
+  }
+  const eligibilityStart = addYears(appDate, -5);
+  const eligibilityEnd = new Date(appDate); eligibilityEnd.setUTCDate(eligibilityEnd.getUTCDate() - 1);
+  document.getElementById('eligibilityPeriod').textContent = `${dateText(eligibilityStart)} to ${dateText(eligibilityEnd)}`;
+
+  const prStart = new Date(Math.max(prDate, eligibilityStart));
+  const prWithin = diffDays(prStart, appDate);
+  const trStart = eligibilityStart;
+  const trEnd = new Date(Math.min(prDate, appDate));
+  const trWithin = overlapDays(trStart, trEnd, eligibilityStart, appDate);
+
+  const prAbsent = sumTable('prAbsences', prStart, appDate);
+  const trAbsent = sumTable('trAbsences', trStart, trEnd);
+
+  const prCredit = Math.max(0, prWithin - prAbsent);
+  const trCalendarCredit = Math.max(0, trWithin - trAbsent);
+  const trHalf = trWithin / 2;
+  const trCredit = Math.min(365, trCalendarCredit / 2);
+  const total = prCredit + trCredit;
+  const remaining = Math.max(0, 1095 - total);
+
+  document.getElementById('prWithin').textContent = fmt(prWithin);
+  document.getElementById('trWithin').textContent = fmt(trWithin);
+  document.getElementById('trHalf').textContent = fmt(trHalf);
+  document.getElementById('prAbsent').textContent = fmt(prAbsent);
+  document.getElementById('trAbsent').textContent = fmt(trAbsent);
+  document.getElementById('trAbsentCredit').textContent = fmt(trAbsent/2);
+  document.getElementById('prCredit').textContent = fmt(prCredit);
+  document.getElementById('trCalendarCredit').textContent = fmt(trCalendarCredit);
+  document.getElementById('trCredit').textContent = fmt(trCredit);
+  document.getElementById('total').textContent = fmt(total);
+
+  if (total >= 1095 && prCredit >= 730) {
+    status.className = 'status ok';
+    status.textContent = `Estimated eligible: ${fmt(total)} days total. Still verify with IRCC before applying.`;
+  } else if (total >= 1095 && prCredit < 730) {
+    status.className = 'status warn';
+    status.textContent = `You have ${fmt(total)} days total, but IRCC says you cannot meet the requirement without at least two years as a permanent resident. PR credit shown here: ${fmt(prCredit)} days.`;
+  } else {
+    status.className = 'status bad';
+    status.textContent = `Estimated not yet eligible: ${fmt(total)} days. You need about ${fmt(remaining)} more days, assuming no further absences or other deductions.`;
+  }
+}
+document.querySelectorAll('input').forEach(i => i.addEventListener('input', calculate));
+calculate();
+</script>
+</body>
+</html>
